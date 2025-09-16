@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Call Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #1a202c;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-2xl border border-gray-200">
+        <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-6">AI Voice Call Demo</h1>
+        <p class="text-center text-gray-500 mb-8">
+            Enter text, choose a voice, and simulate a call with AI-generated audio.
+        </p>
+
+        <div class="space-y-6">
+            <div>
+                <label for="text-input" class="block text-sm font-medium text-gray-700 mb-2">
+                    Message to Speak
+                </label>
+                <textarea id="text-input" rows="4" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors" placeholder="Type your message here..."></textarea>
+            </div>
+
+            <div>
+                <label for="voice-select" class="block text-sm font-medium text-gray-700 mb-2">
+                    Choose a Voice
+                </label>
+                <select id="voice-select" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                    <option value="" disabled selected>Loading voices...</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="destination-input" class="block text-sm font-medium text-gray-700 mb-2">
+                    SIP Destination URI
+                </label>
+                <input type="text" id="destination-input" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors" placeholder="e.g., sip:user@example.com or phone_number@sip_provider" />
+            </div>
+
+            <button id="call-button" class="w-full flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 ease-in-out transform hover:scale-105">
+                <span id="button-text">Generate & Call</span>
+                <span id="loading-spinner" class="hidden h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin ml-2"></span>
+            </button>
+        </div>
+
+        <div id="status-message" class="mt-8 text-center text-sm font-medium text-gray-600 h-6"></div>
+        <div class="mt-4 text-center">
+            <audio id="audio-player" class="w-full rounded-lg" controls></audio>
+        </div>
+
+        <div class="mt-12">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">Call Log</h2>
+            <div id="call-log" class="bg-gray-50 p-4 rounded-lg border border-gray-200 h-64 overflow-y-scroll">
+                <p class="text-sm text-gray-400">Waiting for call events...</p>
+            </div>
+        </div>
+        <h3 class="text-center">Made by Drashti</h3>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const socket = io();
+            const textInput = document.getElementById('text-input');
+            const voiceSelect = document.getElementById('voice-select');
+            const destinationInput = document.getElementById('destination-input');
+            const callButton = document.getElementById('call-button');
+            const buttonText = document.getElementById('button-text');
+            const loadingSpinner = document.getElementById('loading-spinner');
+            const statusMessage = document.getElementById('status-message');
+            const audioPlayer = document.getElementById('audio-player');
+            const callLog = document.getElementById('call-log');
+            
+           
+            const API_KEY = "voicecall";
+
+            let callIdCounter = 0;
+
+            // fetch voices from the backend 
+            async function fetchVoicesAndPopulateDropdown() {
+                try {
+                    const response = await fetch('/get_voices');
+                    const voices = await response.json();
+                    
+                    if (response.ok) {
+                        voiceSelect.innerHTML = ''; 
+                        voices.forEach(voice => {
+                            const option = document.createElement('option');
+                            option.value = voice.voice_id;
+                            option.textContent = voice.name;
+                            voiceSelect.appendChild(option);
+                        });
+                        statusMessage.textContent = 'Voices loaded successfully.';
+                        statusMessage.className = 'mt-8 text-center text-sm font-medium text-green-600 h-6';
+                    } else {
+                        throw new Error(voices.error || 'Failed to fetch voices.');
+                    }
+                } catch (error) {
+                    console.error('Error fetching voices:', error);
+                    statusMessage.textContent = `Error: ${error.message}`;
+                    statusMessage.className = 'mt-8 text-center text-sm font-medium text-red-600 h-6';
+                    voiceSelect.innerHTML = '<option value="" disabled selected>Error loading voices</option>';
+                }
+            }
+
+            socket.on('connect', () => {
+                console.log('Connected to WebSocket server');
+            });
+
+            socket.on('call_status', (data) => {
+                const logEntry = document.createElement('div');
+                logEntry.className = 'text-sm mb-1';
+                logEntry.textContent = `Call ID: ${data.call_id} | Status: ${data.status}`;
+                callLog.prepend(logEntry);
+            });
+
+            async function generateAndCall() {
+                const text = textInput.value.trim();
+                const voiceId = voiceSelect.value;
+                const destinationUri = destinationInput.value.trim(); 
+                const callId = `call-${callIdCounter++}`;
+
+                if (!text || !destinationUri) {
+                    statusMessage.textContent = 'Please enter text and a SIP destination.';
+                    statusMessage.className = 'mt-8 text-center text-sm font-medium text-red-600 h-6';
+                    return;
+                }
+
+        
+                callButton.disabled = true;
+                buttonText.textContent = 'Generating...';
+                loadingSpinner.classList.remove('hidden');
+                statusMessage.textContent = 'Generating audio...';
+                statusMessage.className = 'mt-8 text-center text-sm font-medium text-blue-600 h-6';
+
+                // Step 1: Generate audio
+                try {
+                    const audioResponse = await fetch('/generate_audio', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-API-Key': API_KEY,
+                        },
+                        body: JSON.stringify({ text, voice_id: voiceId }),
+                    });
+
+                    const audioData = await audioResponse.json();
+                    if (!audioResponse.ok) {
+                        throw new Error(audioData.error || 'Failed to generate audio.');
+                    }
+
+                    audioPlayer.src = audioData.audio_url;
+
+                    // Step 2: Place the SIP call
+                    buttonText.textContent = 'Calling...';
+                    statusMessage.textContent = 'Audio generated. Placing SIP call...';
+                    statusMessage.className = 'mt-8 text-center text-sm font-medium text-yellow-600 h-6';
+
+                    const callResponse = await fetch('/place_call', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-API-Key': API_KEY,
+                        },
+                        body: JSON.stringify({
+                            audio_url: audioData.audio_url,
+                            call_id: callId,
+                            destination_uri: destinationUri
+                        }),
+                    });
+
+                    const callData = await callResponse.json();
+                    if (!callResponse.ok) {
+                        throw new Error(callData.error || 'Failed to place SIP call.');
+                    }
+
+                    statusMessage.textContent = callData.message;
+                    statusMessage.className = 'mt-8 text-center text-sm font-medium text-green-600 h-6';
+
+                } catch (error) {
+                    console.error('An error occurred:', error);
+                    statusMessage.textContent = `Error: ${error.message}`;
+                    statusMessage.className = 'mt-8 text-center text-sm font-medium text-red-600 h-6';
+                } finally {
+                    // Reset button state
+                    callButton.disabled = false;
+                    buttonText.textContent = 'Generate & Call';
+                    loadingSpinner.classList.add('hidden');
+                }
+            }
+
+            callButton.addEventListener('click', generateAndCall);
+
+            // Call this function when the page is loaded to populate the dropdown
+            fetchVoicesAndPopulateDropdown();
+        });
+    </script>
+</body>
+</html>
