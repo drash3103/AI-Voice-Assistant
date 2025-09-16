@@ -54,6 +54,8 @@ This project is a demo web application that integrates the **ElevenLabs Text-to-
     * **Real-time Log**: Listens for WebSocket messages and updates the "Call Log" with live status updates.
 
 ---
+* A flow diagram showing the App flow nd working:
+    ![The application's main user interface](assets/ui-screenshot.png)
 
 ### **Disadvantages & Rationale**
 
