@@ -55,7 +55,14 @@ This project is a demo web application that integrates the **ElevenLabs Text-to-
 
 ---
 * A flow diagram showing the App flow nd working:
-    ![The application's main user interface](assets/ui-screenshot.png)
+    ![The application's main user interface](assets/mermaid-diagram.svg)
+
+**Demo Video**
+To showcase the application's real-time functionality, please record a short video demonstrating the full workflow. Upload this video to a service like YouTube or Google Drive and include a link here.
+
+[Watch the full demo video here](https://drive.google.com/file/d/1fu7Q68GKV5c16iPvQTsP7ciLfFsHzRmm/view?usp=sharing)
+[UI video](https://drive.google.com/file/d/1E3dmfgWNoRjyQYrN6qnufqMrooAqENf3/view?usp=sharing)
+
 
 ### **Disadvantages & Rationale**
 
